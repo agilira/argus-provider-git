@@ -323,7 +323,7 @@ type RemoteConfigProvider interface {
 // URL Format Examples:
 //
 //	git://github.com/user/repo.git/config/app.json?ref=main&auth=token:ghp_xxx
-//	https://gitlab.com/user/repo.git/configs/prod.yaml?ref=v1.0.0&auth=basic:user:pass
+//	https://gitlab.com/user/repo.git/configs/prod.yaml?ref=v1.0.0&auth=basic:MYUSER:MYPASS
 //	ssh://git@bitbucket.org/user/repo.git/config.json?ref=develop&key=/path/to/key
 //	git+ssh://custom-git.example.com/repo.git/app.toml?ref=feature-branch
 type GitProvider struct {
@@ -981,6 +981,15 @@ func (g *GitProvider) getAuthentication(gitURL *GitURL) (transport.AuthMethod, e
 	case "key", "ssh":
 		keyPath := gitURL.AuthData["keypath"]
 		if keyPath != "" {
+			// Validate SSH key file permissions for security
+			if info, err := os.Stat(keyPath); err != nil {
+				return nil, errors.Wrap(err, "ARGUS_AUTH_ERROR",
+					fmt.Sprintf("SSH key file not accessible: %s", keyPath))
+			} else if info.Mode().Perm() > 0o600 {
+				return nil, errors.New("ARGUS_AUTH_ERROR",
+					fmt.Sprintf("SSH key file permissions too open: %s (should be 0600 or less)", keyPath))
+			}
+
 			passphrase := gitURL.AuthData["passphrase"]
 			auth, err = ssh.NewPublicKeysFromFile("git", keyPath, passphrase)
 			if err != nil {

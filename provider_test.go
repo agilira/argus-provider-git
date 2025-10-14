@@ -85,7 +85,7 @@ func TestGitProvider_Validate(t *testing.T) {
 		},
 		{
 			name:        "Valid with basic auth",
-			url:         "https://gitlab.com/user/repo.git#config.json?auth=basic:username:password",
+			url:         "https://gitlab.com/user/repo.git#config.json?auth=basic:testuser:testpass",
 			expectError: false,
 			description: "HTTP basic authentication",
 		},

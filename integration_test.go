@@ -49,7 +49,7 @@ func TestGitProvider_VSCodeRepo(t *testing.T) {
 	t.Logf("Successfully loaded argus-provider-git test config (%d keys)", len(config))
 
 	// Our test config should have some basic fields
-	if config != nil && len(config) > 0 {
+	if len(config) > 0 {
 		t.Logf("Config loaded successfully: %+v", config)
 	}
 }
@@ -72,10 +72,10 @@ func TestGitProvider_RealRepository(t *testing.T) {
 		description string
 	}{
 		{
-			name:        "Small repository with package.json",
-			url:         "https://github.com/octocat/Hello-World.git#package.json?ref=master",
-			expectError: true, // This repo might not have package.json, which is OK for testing
-			description: "Test with small public repository",
+			name:        "Argus provider git config.json",
+			url:         "https://github.com/agilira/argus-provider-git.git#testdata/config.json?ref=main",
+			expectError: false, // This file exists and is valid JSON
+			description: "Test with our own test data",
 		},
 		{
 			name:        "Non-existent repository",
@@ -85,13 +85,13 @@ func TestGitProvider_RealRepository(t *testing.T) {
 		},
 		{
 			name:        "Non-existent file",
-			url:         "https://github.com/agilira/argus.git#nonexistent.json",
+			url:         "https://github.com/agilira/argus-provider-git.git#nonexistent.json?ref=main",
 			expectError: true,
 			description: "Should fail gracefully for non-existent file",
 		},
 		{
 			name:        "Non-existent branch",
-			url:         "https://github.com/agilira/argus.git#go.mod?ref=nonexistent-branch",
+			url:         "https://github.com/agilira/argus-provider-git.git#testdata/config.json?ref=nonexistent-branch",
 			expectError: true,
 			description: "Should fail gracefully for non-existent branch",
 		},
@@ -171,7 +171,7 @@ func TestGitProvider_ConfigFormats(t *testing.T) {
 			name:       "JSON format with go.mod",
 			url:        "https://github.com/agilira/argus.git#go.mod",
 			format:     "JSON",
-			shouldWork: false, // go.mod non è JSON
+			shouldWork: false, // go.mod isn't JSON
 		},
 	}
 
@@ -214,8 +214,8 @@ func TestGitProvider_Watch(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
 
-	// Test watch on a small, fast repository
-	url := "https://github.com/octocat/Hello-World.git#README?poll=5s"
+	// Test watch on our own repository with existing JSON file
+	url := "https://github.com/agilira/argus-provider-git.git#testdata/config.json?poll=5s&ref=main"
 
 	configChan, err := provider.Watch(ctx, url)
 	if err != nil {
@@ -260,7 +260,7 @@ func TestGitProvider_ConcurrentOperations(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 	defer cancel()
 
-	url := "https://github.com/agilira/test-configs.git#config.json"
+	url := "https://github.com/agilira/argus-provider-git.git#testdata/config.json?ref=main"
 
 	// Run multiple concurrent Get operations
 	const numRoutines = 5
