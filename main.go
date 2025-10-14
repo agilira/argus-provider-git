@@ -838,23 +838,23 @@ func (g *GitProvider) readConfigFile(repo *git.Repository, filePath, reference s
 	// Read file from worktree with secure path validation
 	rootPath := worktree.Filesystem.Root()
 	fullPath := filepath.Join(rootPath, filePath)
-	
+
 	// Security check: ensure the resolved path is still within the repository root
 	cleanPath, err := filepath.Abs(fullPath)
 	if err != nil {
 		return nil, errors.Wrap(err, "ARGUS_SECURITY_ERROR", "failed to resolve absolute path")
 	}
-	
+
 	cleanRoot, err := filepath.Abs(rootPath)
 	if err != nil {
 		return nil, errors.Wrap(err, "ARGUS_SECURITY_ERROR", "failed to resolve repository root path")
 	}
-	
+
 	if !strings.HasPrefix(cleanPath, cleanRoot+string(filepath.Separator)) {
-		return nil, errors.New("ARGUS_SECURITY_ERROR", 
+		return nil, errors.New("ARGUS_SECURITY_ERROR",
 			fmt.Sprintf("path traversal detected: %s is outside repository root", filePath))
 	}
-	
+
 	// #nosec G304 - Path is validated above to prevent directory traversal
 	fileContent, err := os.ReadFile(cleanPath)
 	if err != nil {

@@ -47,7 +47,7 @@ func TestGitProvider_VSCodeRepo(t *testing.T) {
 
 	// Verify it contains expected JSON fields from our test config
 	t.Logf("Successfully loaded argus-provider-git test config (%d keys)", len(config))
-	
+
 	// Our test config should have some basic fields
 	if config != nil && len(config) > 0 {
 		t.Logf("Config loaded successfully: %+v", config)
@@ -214,7 +214,7 @@ func TestGitProvider_Watch(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
 
-	// Test watch on a small, fast repository  
+	// Test watch on a small, fast repository
 	url := "https://github.com/octocat/Hello-World.git#README?poll=5s"
 
 	configChan, err := provider.Watch(ctx, url)
