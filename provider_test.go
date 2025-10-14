@@ -210,13 +210,13 @@ func TestGitURL_Parsing(t *testing.T) {
 		},
 		{
 			name: "Basic auth with custom poll",
-			url:  "https://git.company.com/team/configs.git?file=production.toml&ref=v2.0.0&auth=basic:admin:secret&poll=120s",
+			url:  "https://git.company.com/team/configs.git?file=production.toml&ref=v2.0.0&auth=basic:testadmin:testsecret&poll=120s",
 			expected: GitURL{
 				RepoURL:      "https://git.company.com/team/configs.git",
 				FilePath:     "production.toml",
 				Reference:    "v2.0.0",
 				AuthType:     "basic",
-				AuthData:     map[string]string{"username": "admin", "password": "secret"},
+				AuthData:     map[string]string{"username": "testadmin", "password": "testsecret"},
 				PollInterval: 120 * time.Second,
 			},
 		},

@@ -132,10 +132,10 @@ func TestGitProvider_RealRepository(t *testing.T) {
 
 			t.Logf("Successfully loaded config from %s (%d keys)", tc.url, len(config))
 
-			// Verify specific content for VS Code package.json
+			// Verify specific content for package.json
 			if tc.name == "VS Code repository package.json" {
 				if name, exists := config["name"]; !exists {
-					t.Error("Expected 'name' field in VS Code package.json")
+					t.Error("Expected 'name' field in repository for package.json")
 				} else if nameStr, ok := name.(string); !ok || !strings.Contains(nameStr, "code") {
 					t.Errorf("Expected VS Code name field, got: %v", name)
 				}
