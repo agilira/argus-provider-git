@@ -22,7 +22,9 @@ func TestGitProvider_SSHAuthentication(t *testing.T) {
 	tempDir := t.TempDir()
 	keyPath := filepath.Join(tempDir, "test_key")
 
-	// Write a mock SSH private key (for testing validation only)
+	// SECURITY NOTE: This is a MOCK/FAKE SSH key for testing only!
+	// Not a real private key - truncated and invalid by design
+	// Used only to test file permission validation logic
 	mockKey := `-----BEGIN OPENSSH PRIVATE KEY-----
 b3BlbnNzaC1rZXktdjEAAAAABG5vbmUAAAAEbm9uZQAAAAAAAAABAAAAFwAAAAdzc2gtcn
 NhAAAAAwEAAQAAAQEA0
