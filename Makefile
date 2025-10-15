@@ -66,13 +66,27 @@ gosec: ## Run gosec security scanner
 	fi
 	@$(TOOLS_DIR)/gosec ./... || (echo "$(YELLOW)  gosec completed with warnings (may be import-related)$(NC)" && exit 0)
 
+govulncheck: ## Run Go vulnerability check
+	@echo "$(YELLOW)Running Go vulnerability check...$(NC)"
+	@if [ ! -f "$(TOOLS_DIR)/govulncheck" ]; then \
+		echo "$(RED)govulncheck not found. Run 'make tools' to install.$(NC)"; \
+		exit 1; \
+	fi
+	$(TOOLS_DIR)/govulncheck ./...
+
 lint: staticcheck errcheck ## Run all linters
 	@echo "$(GREEN)All linters completed.$(NC)"
 
-security: gosec ## Run security checks
+gomodverify: ## Verify go.mod dependencies
+	@echo "$(YELLOW)Verifying go.mod dependencies...$(NC)"
+	go mod verify
+	go mod tidy
+	@echo "$(GREEN)go.mod verification completed.$(NC)"
+
+security: gosec govulncheck ## Run security checks
 	@echo "$(GREEN)Security checks completed.$(NC)"
 
-check: fmt vet lint security test ## Run all checks (format, vet, lint, security, test)
+check: fmt vet lint security gomodverify test ## Run all checks (format, vet, lint, security, test)
 	@echo "$(GREEN)All checks passed!$(NC)"
 
 check-race: fmt vet lint security race ## Run all checks including race detector
@@ -83,6 +97,7 @@ tools: ## Install development tools
 	go install honnef.co/go/tools/cmd/staticcheck@latest
 	go install github.com/kisielk/errcheck@latest
 	go install github.com/securego/gosec/v2/cmd/gosec@latest
+	go install golang.org/x/vuln/cmd/govulncheck@latest
 	@echo "$(GREEN)Tools installed successfully!$(NC)"
 
 deps: ## Download and verify dependencies
@@ -110,6 +125,20 @@ bench: ## Run benchmarks
 	@echo "$(YELLOW)Running benchmarks...$(NC)"
 	go test -bench=. -benchmem ./...
 
+fuzz: ## Run fuzz tests
+	@echo "$(YELLOW)Running fuzz tests...$(NC)"
+	@echo "Testing URL validation..."
+	go test -fuzz=FuzzValidateSecureGitURL -fuzztime=30s
+	@echo "Testing host validation..."
+	go test -fuzz=FuzzValidateGitHost -fuzztime=30s
+	@echo "Testing path validation..."
+	go test -fuzz=FuzzValidateRepositoryPath -fuzztime=30s
+	@echo "Testing config file validation..."
+	go test -fuzz=FuzzValidateConfigFilePath -fuzztime=30s
+	@echo "Testing URL parsing..."
+	go test -fuzz=FuzzParseGitURL -fuzztime=30s
+	@echo "$(GREEN)Fuzz tests completed!$(NC)"
+
 ci: ## Run CI checks (used in GitHub Actions)
 	@echo "$(BLUE)Running CI checks...$(NC)"
 	@make fmt vet lint security test coverage
@@ -127,6 +156,7 @@ all: clean tools deps check build ## Run everything from scratch
 # Show tool status
 status: ## Show status of installed tools
 	@echo "$(BLUE)Development tools status:$(NC)"
-	@echo -n "staticcheck: "; [ -f "$(TOOLS_DIR)/staticcheck" ] && echo "$(GREEN)✓ installed$(NC)" || echo "$(RED)✗ missing$(NC)"
-	@echo -n "errcheck:    "; [ -f "$(TOOLS_DIR)/errcheck" ] && echo "$(GREEN)✓ installed$(NC)" || echo "$(RED)✗ missing$(NC)"
-	@echo -n "gosec:       "; [ -f "$(TOOLS_DIR)/gosec" ] && echo "$(GREEN)✓ installed$(NC)" || echo "$(RED)✗ missing$(NC)"
+	@echo -n "staticcheck:   "; [ -f "$(TOOLS_DIR)/staticcheck" ] && echo "$(GREEN)✓ installed$(NC)" || echo "$(RED)✗ missing$(NC)"
+	@echo -n "errcheck:      "; [ -f "$(TOOLS_DIR)/errcheck" ] && echo "$(GREEN)✓ installed$(NC)" || echo "$(RED)✗ missing$(NC)"
+	@echo -n "gosec:         "; [ -f "$(TOOLS_DIR)/gosec" ] && echo "$(GREEN)✓ installed$(NC)" || echo "$(RED)✗ missing$(NC)"
+	@echo -n "govulncheck:   "; [ -f "$(TOOLS_DIR)/govulncheck" ] && echo "$(GREEN)✓ installed$(NC)" || echo "$(RED)✗ missing$(NC)"

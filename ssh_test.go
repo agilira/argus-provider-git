@@ -3,6 +3,7 @@
 // SSH Authentication tests for Git provider
 //
 // Copyright (c) 2025 AGILira - A. Giordano
+// Series: an AGLIra library
 // SPDX-License-Identifier: MPL-2.0
 
 package git

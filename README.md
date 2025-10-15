@@ -21,11 +21,11 @@ Enables real-time configuration loading and watching from GitHub, GitLab, Bitbuc
 - Branch, tag, and commit-specific configuration loading
 
 **Secure by Design**
-- Red-team tested against path traversal and SSRF attacks
+- [Red-team tested](security_test.go) against path traversal and SSRF attacks
 - URL validation and sanitization
 - SSH key permission validation
 - Resource limits for DoS protection
-- Comprehensive audit logging
+- [Fuzz tested](fuzz_test.go) for path traversal protection
 
 **High Performance**
 - Intelligent multi-layer caching (authentication, repository metadata, configurations)
@@ -33,9 +33,11 @@ Enables real-time configuration loading and watching from GitHub, GitLab, Bitbuc
 - Shallow clones for minimal bandwidth usage
 - Concurrent operation limits with resource management
 
-## Compatibility and Support
+## Compatibility
 
-argus-provider-git works with Git servers supporting the Git protocol and follows Long-Term Support guidelines to ensure consistent performance across production deployments.
+Requires Go 1.25+ and [go-git](https://github.com/go-git/go-git) v5+.
+
+> **Security Note:** Go 1.25+ is required to avoid supply chain vulnerabilities detected by govulncheck in earlier versions.
 
 ## Installation
 
@@ -45,40 +47,23 @@ go get github.com/agilira/argus-provider-git
 
 ## Quick Start
 
-To use the provider, import it and register it with Argus:
-
 ```go
-package main
-
 import (
-    "context"
-    "log"
-    "time"
-
     "github.com/agilira/argus"
     git "github.com/agilira/argus-provider-git"
 )
 
-func main() {
-    // Create Argus configuration watcher
-    watcher := argus.New(argus.Config{
-        Remote: argus.RemoteConfig{
-            Enabled:     true,
-            PrimaryURL:  "https://github.com/myorg/configs.git#config.json?ref=main",
-            SyncInterval: 30 * time.Second,
-        },
-    })
-    
-    // Start watching for configuration changes
-    watcher.Start()
-    defer watcher.Stop()
-    
-    // Access loaded configuration
-    config := watcher.Get()
-    log.Printf("Configuration loaded: %+v", config)
-    
-    // Your application logic here
-    select {}
+// Register the Git provider with Argus
+provider := git.GetProvider()
+err := argus.RegisterRemoteProvider(provider)
+if err != nil {
+    log.Fatal("Failed to register Git provider:", err)
+}
+
+// Load configuration from Git repository
+config, err := argus.LoadRemoteConfig("https://github.com/myorg/configs.git#config.json?ref=main")
+if err != nil {
+    log.Fatal("Failed to load config:", err)
 }
 ```
 
@@ -139,19 +124,10 @@ Configuration URLs follow the Git repository format with additional parameters:
 - `git://` - Git protocol
 
 **Examples:**
-
 ```bash
-# GitHub public repository
 https://github.com/user/repo.git#config.json?ref=main
-
-# GitHub private repository with token
-https://github.com/user/private-repo.git#config.yaml?ref=v1.0&auth=token:ghp_xxxxx
-
-# GitLab with SSH key
+https://github.com/user/private-repo.git#config.yaml?auth=token:ghp_xxxxx
 ssh://git@gitlab.com/user/repo.git#configs/prod.toml?auth=key:/path/to/key
-
-# Self-hosted Git server
-https://git.company.com/configs.git#app.json?ref=production&auth=basic:MYUSER:MYPASS
 ```
 
 ### URL Parameters
@@ -209,39 +185,15 @@ caching = true
 
 ## Authentication
 
-### GitHub Token Authentication
-
-Create a Personal Access Token in GitHub Settings:
-
-```bash
-# Required scopes: repo (for private repositories)
-https://github.com/user/private-repo.git#config.json?auth=token:ghp_xxxxxxxxx
-```
-
-### GitLab Token Authentication
-
-Create a Project Access Token in GitLab:
+**Token Authentication:** `?auth=token:YOUR_TOKEN` (GitHub, GitLab, Bitbucket)  
+**SSH Keys:** `?auth=key:/path/to/key` (requires 0600 permissions)  
+**Basic Auth:** `?auth=basic:username:password` (self-hosted Git)
 
 ```bash
-# Required scopes: read_repository
-https://gitlab.com/user/repo.git#config.json?auth=token:glpat-xxxxxxx
+# Examples
+https://github.com/user/repo.git#config.json?auth=token:ghp_xxxxx
+ssh://git@gitlab.com/user/repo.git#config.yaml?auth=key:/home/user/.ssh/id_rsa
 ```
-
-### SSH Key Authentication
-
-Ensure your SSH key is registered in your Git platform account:
-
-```bash
-# SSH key without passphrase
-ssh://git@github.com/user/repo.git#config.json?auth=key:/home/user/.ssh/id_rsa
-
-# SSH key with passphrase
-ssh://git@gitlab.com/user/repo.git#config.yaml?auth=ssh:/path/to/key:mypassphrase
-```
-
-**Security Requirements:**
-- SSH key file must have permissions 0600 or more restrictive
-- Key file must be accessible by the application user
 
 ### HTTP Basic Authentication
 
@@ -255,20 +207,10 @@ https://git.company.com/repo.git#config.json?auth=basic:YOUR_USERNAME:YOUR_PASSW
 
 ### Security Features
 
-**Path Traversal Protection**
-- Validates and sanitizes all file paths
-- Prevents access outside repository boundaries
-- Blocks access to sensitive system files
-
-**Network Security**  
-- URL validation and normalization
-- SSRF attack prevention
-- Resource exhaustion protection
-
-**Authentication Security**
-- SSH key permission validation
-- Credential caching with secure storage
-- Authentication failure logging
+**[Path Traversal Protection](security_test.go#L450)** - Prevents access outside repository boundaries with 50+ attack vector tests  
+**[SSRF Protection](security_test.go#L270)** - Blocks localhost, private networks, and cloud metadata access  
+**[SSH Security](ssh_test.go)** - Validates key permissions and secure credential caching  
+**[Automated Security](.github/workflows/codeql.yml)** - CodeQL analysis, gosec, and govulncheck
 
 ### Resource Limits
 
@@ -287,77 +229,14 @@ const (
 
 ## Performance
 
-### Caching System
-
-The provider implements multi-layer caching for optimal performance:
-
-**Authentication Cache**
-- Caches authentication objects to avoid re-creation
-- Automatic cache invalidation and renewal
-
-**Repository Metadata Cache**  
-- Stores commit hashes for efficient change detection
-- Reduces network calls during polling operations
-
-**Configuration Cache**
-- Caches loaded configurations by commit hash
-- Intelligent cache eviction based on TTL and capacity
-
-### Performance Optimizations
-
-**Efficient Git Operations**
-- Uses `git ls-remote` for change detection without cloning
-- Shallow clones minimize bandwidth and storage requirements
-- Retry logic with exponential backoff for reliability
-
-**Resource Management**
-- Connection pooling for multiple repositories
-- Concurrent operation limits prevent resource exhaustion
-- Memory-efficient file handling for large configurations
+**Multi-layer Caching** - Authentication, metadata, and configuration caching with intelligent eviction  
+**Efficient Operations** - `git ls-remote` for change detection, shallow clones, exponential backoff  
+**Resource Management** - Connection pooling, concurrent limits, memory-efficient file handling
 
 ## Advanced Configuration
 
-### Environment Variables
-
-For secure credential management:
-
-```bash
-export GITHUB_TOKEN="ghp_xxxxxxxxxxxxxxxx"
-export GITLAB_TOKEN="glpat-xxxxxxxxxxxxxxx"
-export SSH_KEY_PATH="/secure/path/to/key"
-```
-
-```go
-token := os.Getenv("GITHUB_TOKEN")
-configURL := fmt.Sprintf("https://github.com/org/repo.git#config.json?auth=token:%s", token)
-```
-
-### Multi-Environment Setup
-
-```go
-type ConfigManager struct {
-    provider git.RemoteConfigProvider
-    envConfigs map[string]string
-}
-
-func NewConfigManager() *ConfigManager {
-    return &ConfigManager{
-        provider: git.GetProvider(),
-        envConfigs: map[string]string{
-            "dev":  "https://github.com/myorg/configs.git#dev.json?ref=develop",
-            "prod": "https://github.com/myorg/configs.git#prod.json?ref=main&auth=token:xxx",
-        },
-    }
-}
-
-func (cm *ConfigManager) LoadConfig(env string) (map[string]interface{}, error) {
-    configURL, exists := cm.envConfigs[env]
-    if !exists {
-        return nil, fmt.Errorf("unknown environment: %s", env)
-    }
-    
-    return cm.provider.Load(context.Background(), configURL)
-}
+**Environment Variables:** Use `GITHUB_TOKEN`, `GITLAB_TOKEN`, `SSH_KEY_PATH` for secure credential management  
+**Multi-Environment:** Support for dev/staging/prod configurations with different repositories and branches
 ```
 
 ## Troubleshooting
@@ -384,26 +263,10 @@ func (cm *ConfigManager) LoadConfig(env string) (map[string]interface{}, error) 
 - Consider using tokens for better rate limits
 - Increase polling intervals for watch operations
 
-## Requirements
-
-- Go 1.21 or later
-- Git client (for SSH authentication)
-- Network access to Git repositories
-
 ## License
 
-This project is licensed under the Mozilla Public License 2.0 - see the [LICENSE](LICENSE.md) file for details.
-
-## Contributing
-
-Contributions are welcome! Please see [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
-
-## Support
-
-- **Documentation**: [GitHub Repository](https://github.com/agilira/argus-provider-git)
-- **Issues**: [Issue Tracker](https://github.com/agilira/argus-provider-git/issues)
-- **Security**: Please report security issues privately to security@agilira.com
+Mozilla Public License 2.0 - see the [LICENSE](LICENSE.md) file for details.
 
 ---
 
-Part of the [Argus](https://github.com/agilira/argus) ecosystem by [AGILira](https://github.com/agilira).
+argus-provider-redis • an AGILira library

@@ -169,18 +169,74 @@ func validateGitHost(host string) error {
 		return errors.New("ARGUS_INVALID_CONFIG", "git URL host cannot be empty")
 	}
 
-	// SECURITY: Block localhost and internal networks
-	dangerousHosts := []string{
-		"localhost", "127.0.0.1", "::1",
+	// Remove brackets for IPv6 first
+	host = strings.Trim(host, "[]")
+
+	// Remove port if present (but not for IPv6 addresses)
+	if colonIndex := strings.LastIndex(host, ":"); colonIndex != -1 {
+		// Check if it's likely IPv6 (has multiple colons or is ::1)
+		colonCount := strings.Count(host, ":")
+		if colonCount == 1 && host != "::1" { // Only one colon, likely port
+			host = host[:colonIndex]
+		}
+	}
+	lowerHost := strings.ToLower(host)
+
+	// SECURITY: Block localhost variants
+	localhostPatterns := []string{
+		"localhost", "127.0.0.1", "::1", "0.0.0.0",
+		"127.000.000.001",            // Zero padding
+		"0177.0.0.1", "0177.0.0.001", // Octal encoding
+		"2130706433", // Decimal encoding localhost (127.0.0.1)
+		"0x7f000001", // Hex encoding
+	}
+
+	for _, pattern := range localhostPatterns {
+		if lowerHost == strings.ToLower(pattern) {
+			return errors.New("ARGUS_SECURITY_ERROR",
+				fmt.Sprintf("git URL host not allowed for security reasons: %s", host))
+		}
+	}
+
+	// SECURITY: Block private networks (RFC 1918) and other dangerous ranges
+	privateNetworks := []string{
 		"10.", "172.16.", "172.17.", "172.18.", "172.19.",
 		"172.20.", "172.21.", "172.22.", "172.23.", "172.24.",
 		"172.25.", "172.26.", "172.27.", "172.28.", "172.29.",
-		"172.30.", "172.31.", "192.168.",
+		"172.30.", "172.31.", "192.168.", "169.254.", // Link-local
+		"224.", "225.", "226.", "227.", "228.", "229.", // Multicast ranges
+		"230.", "231.", "232.", "233.", "234.", "235.", "236.", "237.", "238.", "239.",
 	}
 
-	lowerHost := strings.ToLower(host)
-	for _, dangerous := range dangerousHosts {
-		if strings.Contains(lowerHost, dangerous) {
+	// SECURITY: Block specific dangerous addresses
+	specificBlocked := []string{
+		"255.255.255.255", // Broadcast
+		"0.0.0.0",         // Any address
+	}
+
+	for _, blocked := range specificBlocked {
+		if lowerHost == blocked {
+			return errors.New("ARGUS_SECURITY_ERROR",
+				fmt.Sprintf("git URL host not allowed for security reasons: %s", host))
+		}
+	}
+
+	for _, network := range privateNetworks {
+		if strings.HasPrefix(lowerHost, network) {
+			return errors.New("ARGUS_SECURITY_ERROR",
+				fmt.Sprintf("git URL host not allowed for security reasons: %s", host))
+		}
+	}
+
+	// SECURITY: Block cloud metadata servers
+	metadataHosts := []string{
+		"169.254.169.254",          // AWS/Azure/GCP metadata
+		"metadata.google.internal", // GCP metadata
+		"100.100.100.200",          // Alibaba Cloud
+	}
+
+	for _, metadata := range metadataHosts {
+		if lowerHost == metadata {
 			return errors.New("ARGUS_SECURITY_ERROR",
 				fmt.Sprintf("git URL host not allowed for security reasons: %s", host))
 		}
@@ -195,17 +251,43 @@ func validateRepositoryPath(path string) error {
 		return errors.New("ARGUS_INVALID_CONFIG", "git repository path cannot be empty")
 	}
 
-	// SECURITY: Detect path traversal patterns
+	// SECURITY: URL decode to detect encoded path traversal
+	decodedPath := path
+	if decoded, err := url.QueryUnescape(path); err == nil {
+		decodedPath = decoded
+	}
+
+	// SECURITY: Detect path traversal patterns (both original and decoded)
 	dangerousPatterns := []string{
 		"..", "../", "..\\", "./../", ".\\..\\",
 		"/.git/../", "\\.git\\..\\",
+		"%2e%2e", "%2f", "%5c", // URL encoded versions
 	}
 
-	lowerPath := strings.ToLower(path)
-	for _, pattern := range dangerousPatterns {
-		if strings.Contains(lowerPath, pattern) {
-			return errors.New("ARGUS_SECURITY_ERROR",
-				fmt.Sprintf("dangerous path traversal pattern detected: %s", pattern))
+	// SECURITY: Detect command injection patterns
+	injectionPatterns := []string{
+		";", "|", "&", "`", "$", "$(", "${",
+		"rm ", "wget ", "curl ", "nc ", "sh ", "bash ",
+		"%3b", "%7c", "%26", "%60", "%24", // URL encoded versions
+		"%00", "\x00", // Null byte injection
+	}
+
+	pathsToCheck := []string{strings.ToLower(path), strings.ToLower(decodedPath)}
+	for _, checkPath := range pathsToCheck {
+		// Check path traversal patterns
+		for _, pattern := range dangerousPatterns {
+			if strings.Contains(checkPath, pattern) {
+				return errors.New("ARGUS_SECURITY_ERROR",
+					fmt.Sprintf("dangerous path traversal pattern detected: %s", pattern))
+			}
+		}
+
+		// Check command injection patterns
+		for _, pattern := range injectionPatterns {
+			if strings.Contains(checkPath, pattern) {
+				return errors.New("ARGUS_SECURITY_ERROR",
+					fmt.Sprintf("dangerous command injection pattern detected: %s", pattern))
+			}
 		}
 	}
 
@@ -233,6 +315,13 @@ func validateConfigFilePath(filePath string) error {
 			return errors.New("ARGUS_SECURITY_ERROR",
 				fmt.Sprintf("control character (0x%02x) at position %d not allowed", b, i))
 		}
+	}
+
+	// SECURITY: Block absolute paths
+	if filepath.IsAbs(filePath) || strings.HasPrefix(filePath, "/") ||
+		(len(filePath) > 1 && filePath[1] == ':') { // Windows drive letters
+		return errors.New("ARGUS_SECURITY_ERROR",
+			fmt.Sprintf("absolute paths not allowed: %s", filePath))
 	}
 
 	// SECURITY: Block path traversal attempts
@@ -556,6 +645,27 @@ func (g *GitProvider) parseGitURL(configURL string) (*GitURL, error) {
 				}
 			}
 		}
+	}
+
+	// Handle ssh_key parameter (alternative to auth=key:path)
+	var sshKeyPath string
+	if sshKeyPath = fragmentQuery.Get("ssh_key"); sshKeyPath == "" {
+		sshKeyPath = originalQuery.Get("ssh_key")
+	}
+
+	if sshKeyPath != "" {
+		gitURL.AuthType = "ssh"
+		gitURL.AuthData["keypath"] = sshKeyPath
+
+		// SECURITY: Validate SSH key file permissions during parsing
+		if info, err := os.Stat(sshKeyPath); err != nil {
+			return nil, errors.New("ARGUS_AUTH_ERROR", "SSH key file not accessible")
+		} else if info.Mode().Perm() > 0o600 {
+			return nil, errors.New("ARGUS_SECURITY_ERROR", "SSH key file permissions too open (should be 0600 or less)")
+		}
+	} else if fragmentQuery.Has("ssh_key") || originalQuery.Has("ssh_key") {
+		// Empty ssh_key parameter provided
+		return nil, errors.New("ARGUS_AUTH_ERROR", "SSH key path cannot be empty")
 	}
 
 	// Extract custom polling interval for watch
@@ -983,11 +1093,9 @@ func (g *GitProvider) getAuthentication(gitURL *GitURL) (transport.AuthMethod, e
 		if keyPath != "" {
 			// Validate SSH key file permissions for security
 			if info, err := os.Stat(keyPath); err != nil {
-				return nil, errors.Wrap(err, "ARGUS_AUTH_ERROR",
-					fmt.Sprintf("SSH key file not accessible: %s", keyPath))
+				return nil, errors.New("ARGUS_AUTH_ERROR", "SSH key file not accessible")
 			} else if info.Mode().Perm() > 0o600 {
-				return nil, errors.New("ARGUS_AUTH_ERROR",
-					fmt.Sprintf("SSH key file permissions too open: %s (should be 0600 or less)", keyPath))
+				return nil, errors.New("ARGUS_SECURITY_ERROR", "SSH key file permissions too open (should be 0600 or less)")
 			}
 
 			passphrase := gitURL.AuthData["passphrase"]

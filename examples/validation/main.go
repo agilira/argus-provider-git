@@ -1,10 +1,11 @@
-// Example usage of the Git providerpackage basic
-
-//
 // This example demonstrates how to use the Git provider for Argus
 // to load configuration from Git repositories.
 //
 // Run with: go run examples/basic/main.go
+//
+// Copyright (c) 2025 AGILira - A. Giordano
+// Series: an AGLIra library
+// SPDX-License-Identifier: MPL-2.0
 
 package main
 
