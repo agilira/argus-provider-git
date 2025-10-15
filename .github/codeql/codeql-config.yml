@@ -1,0 +1,72 @@
+# CodeQL Configuration for Argus Git Provider
+# Focuses on Git-specific security, SSRF, URL injection, and remote repository vulnerabilities
+
+name: argus-git-provider-security
+
+# Disable default queries to use our custom security focus
+disable-default-queries: false
+
+# Include additional security queries relevant to Git and remote repository access
+queries:
+  - uses: security-and-quality
+  - uses: security-experimental
+  
+# Define custom paths for analysis
+paths:
+  - "**/*.go"
+
+# Ignore test files and dependencies (focus on production code)
+paths-ignore:
+  - "**/*_test.go"
+  - "**/testdata/**"
+  - "**/vendor/**"
+  - "**/examples/**"
+
+# Packs for enhanced Git security analysis
+packs:
+  - "codeql/go-queries"
+  - "codeql/go-queries:AlertSuppression.ql"
+  - "codeql/go-queries:Security"
+
+# Query filters for Git provider security
+query-filters:
+  - include:
+      id: go/path-injection
+      # Critical for Git repository path validation
+  - include:
+      id: go/ssrf
+      # Essential for Git URL validation and SSRF prevention
+  - include:
+      id: go/uncontrolled-data-used-in-path
+      # Git paths and file paths from user input
+  - include:
+      id: go/url-redirection
+      # Git URL manipulation detection
+  - include:
+      id: go/missing-auth
+      # Git authentication bypass
+  - include:
+      id: go/hardcoded-credentials
+      # Git token/credential leakage
+  - include:
+      id: go/command-injection
+      # Git command injection prevention
+  - include:
+      id: go/zip-slip
+      # Archive extraction vulnerabilities
+  - exclude:
+      id: go/unused-variable
+      # Configuration structs may have unused fields for compatibility
+      
+# Custom extraction configuration for Git provider analysis
+extractor-config:
+  go:
+    # Enable deep analysis for Git-specific functions
+    index:
+      filters:
+        - include: "**/*.go"
+        - exclude: "*_test.go"
+    build_command: "go build ./..."
+    
+# Performance tuning for Git provider analysis
+compilation-cache: true
